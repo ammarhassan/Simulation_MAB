@@ -6,6 +6,7 @@ from matplotlib.pylab import *
 from random import sample
 from util_functions import calculateEntropy, featureUniform, gaussianFeature
 from Articles import *
+import json
 
 
 class batchAlgorithmStats():
@@ -57,10 +58,41 @@ class User():
 		self.id = id
 		self.featureVector = featureVector
 
+class UserManager():
+	def __init__(self, dimension, iterations, filename):
+		self.userContexts = []
+		self.dimension = dimension
+		self.iterations = iterations
+		self.filename = filename
+
+	def simulateContextfromUsers(self, numUsers, featureFunction, **argv):
+		"""users of all context arriving uniformly"""
+		usersids = range(numUsers)
+		users = []
+		for key in usersids:
+			users.append(User(key, featureFunction(self.dimension, argv=argv)))
+		
+		with open(self.filename, 'w') as f:
+			for it in range(self.iterations):
+				chosen = choice(users)
+				f.write(json.dumps((chosen.id, chosen.featureVector.tolist()))+'\n')
+
+	def randomContexts(self, featureFunction, **argv):
+		with open(self.filename, 'w') as f:
+			for it in range(self.iterations):
+				f.write(json.dumps((0, featureFunction(self.dimension, argv=argv).tolist() ))+'\n')
+
+	def contextsIterator(self):
+		with open(self.filename, 'r') as f:
+			for line in f:
+				id, FV = json.loads(line)
+				yield User(id, np.array(FV))
+		
+
 class simulateOnlineData():
 	def __init__(self, dimension, iterations, articles,
 		noise=lambda x: np.random.normal(scale=x),
-		n_users=0, users=None, userGenerator=None,
+		userGenerator=None,
 		type="ConstantTheta", environmentVars={}):
 		self.dimension = dimension
 		self.type = type
@@ -77,13 +109,9 @@ class simulateOnlineData():
 		"""the temp memory for storing the articles click from expectations
 		for each iteration"""
 		self.articlesPicked = [] 
+		self.userGenerator = userGenerator
 
 		self.reward_vector = {}
-		self.users = users
-		if not (users or userGenerator):
-			assert n_users>0
-			self.users = []
-			self.simulateUsers(n_users)
 
 		self.environmentVars = environmentVars
 		self.initiateEnvironment()
@@ -115,17 +143,8 @@ class simulateOnlineData():
 			for x in self.articlePool:
 				x.theta = np.dot(np.identity(self.dimension)*self.environmentVars['shrinker'], x.theta)
 
-	def simulateUsers(self, numUsers):
-		"""users of all context arriving uniformly"""
-		usersids = range(numUsers)
-		for key in usersids:
-			self.users.append(User(key, featureUniform(self.dimension)))
-
 	def getUser(self):
-		if self.users:
-			return choice(self.users)
-		return self.userGenerator()
-		
+		return self.userGenerator.next()
 
 	def getClick(self, pickedArticle, userArrived):
 		if pickedArticle.id not in self.reward_vector:
@@ -197,7 +216,7 @@ class simulateOnlineData():
 		else:
 			env_name = "Const"
 
-		sig_name = env_name+"_A"+str(len(self.articles))+"_It"+str(self.iterations//1000)+"k_U"+str(len(self.users)//1000)+"k_alp-"+str(alpha)+"dec-"+str(decay)+".png"
+		sig_name = env_name+"_A"+str(len(self.articles))+"_It"+str(self.iterations//1000)+"k_alp-"+str(alpha)+"dec-"+str(decay)+".png"
 
 		f, axarr = plt.subplots(3, sharex=True)
 		for alg_name in self.alg_perf:
@@ -240,7 +259,6 @@ class simulateOnlineData():
 						self.type,
 						';'.join([str(x)+'-'+str(y) for x,y in self.environmentVars.items()]),
 						str(len(self.articles)),
-						str(len(self.users)),
 						str(self.iterations),
 						str(self.alg_perf[alg_name].CTRArray[-1]),
 						str(alpha),
@@ -268,16 +286,21 @@ if __name__ == '__main__':
 	decay = .99
 	n_articles = 10
 	n_users = 1000
+	userFilename = "users.p"
 
 	articleManager = ArticleManager(iterations, dimension)
 	articles = articleManager.simulateArticlePool(n_articles=n_articles)
+
+	UM = UserManager(dimension, iterations, userFilename)
+	# UM.simulateContextfromUsers(1000,gaussianFeature, argv={"scaled":True, 'mean':0, 'std':.5})
+
 	" articles can be saved by following instruction"
 	#articleManager.saveArticles(articles, 'articles.p')
 	" saved articles can be loaded by the following instruction"
 	# articles = articleManager.loadArticles('articles.p')
 
 	simExperiment = simulateOnlineData(articles=articles,
-						n_users=n_users,
+						userGenerator = UM.contextsIterator(),
 						dimension=dimension,
 						iterations=iterations,
 						# type="abruptThetaChange",environmentVars={"reInitiate":100000},

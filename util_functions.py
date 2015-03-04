@@ -44,14 +44,17 @@ def calculateEntropy(array):
 	entropy = sum([x*log(x) for x in counts])
 	return entropy
 
-def gaussianFeature(dimension, scaled=False, mean=.2, std=.1):
+def gaussianFeature(dimension, **argv ):
+	mean= argv['mean'] if 'mean' in argv else 0
+	std= argv['std'] if 'std' in argv else .2
+
 	mean = np.ones(dimension)*mean
 	stdev = np.identity(dimension)*std
 	vector = np.random.multivariate_normal(mean, stdev)
-	if scaled:
+	if 'scaled' in argv and argv['scaled']:
 		return vector / np.linalg.norm(vector, ord=2)
 	else: return vector
 
-def featureUniform(dimension):
+def featureUniform(dimension, **argv):
 	feature = np.array([random() for _ in range(dimension)])
 	return feature / sum(feature)
