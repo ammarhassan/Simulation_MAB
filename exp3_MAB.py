@@ -1,4 +1,3 @@
-#from conf import *
 import time
 import re
 from random import random, choice
@@ -94,6 +93,8 @@ class UCB1Struct:
         return self.pta
     def applyDecay(self, decay, duration):  # where to add decay
         self.totalReward *=(decay**duration)
+    
+        
 
 class RandomAlgorithm:
     def __init__(self):
@@ -109,16 +110,12 @@ class RandomAlgorithm:
         return self.articles[article_id].stats.CTR
         
 class Exp3Algorithm:
-    def __init__(self, gamma, decay = None, dimension = 5):
+    def __init__(self, gamma, decay = None):
         self.articles = {}
         self.gamma = gamma
         self.decay = decay
-        self.dimension = dimension
-        self.ArticleNum = 0
     
-    def decide(self, pool_articles, user, time_): #(paramters: article pool)
-        "Should self.ArticleNum be total articles or total pool_articles?? Please correct the following line if its wrong."
-        self.ArticleNum = len(pool_articles)
+    def decide(self, pool_articles): #(paramters: article pool)
         r = random.random()
         cum_pta = 0.0        
         total_Weights = 0.0
@@ -131,9 +128,8 @@ class Exp3Algorithm:
             cum_pta += self.articles[x.id].pta
             if cum_pta >r:
                 return x
-    # parameters : (pickedArticle, Nun of articles in article pool, click)
-    def updateParameters(self, pickedArticle, userArrived, click, time_): 
-        self.articles[pickedArticle.id].updateWeight(self.ArticleNum, click)
+    def updateParameters(self, pickedArticle, ArticleNum, click): # parameters : (pickedArticle, Nun of articles in article pool, click)
+        self.articles[pickedArticle.id].updateWeight(ArticleNum, click)
         if self.decay:
             self.applyDecayToAll(1)
     
@@ -144,19 +140,13 @@ class Exp3Algorithm:
     def getarticleCTR(self, article_id):
         return self.articles[article_id].stats.CTR
 
-    def getLearntParams(self, article_id):
-        return np.zeros(self.dimension)
-
 class Exp3QueueAlgorithm:
-    def __init__(self, gamma, decay = None, dimension=5):
+    def __init__(self, gamma, decay = None):
         self.articles = {}
         self.gamma = gamma
         self.decay = decay
-        self.dimension = dimension
-        self.ArticleNum = 0
     
-    def decide(self, pool_articles, user, time_):  #(paramters: article pool)
-        self.ArticleNum = len(pool_articles)
+    def decide(self, pool_articles):  #(paramters: article pool)
         MyQ = myQueue()
         QueueSize = 15
         MyQ.decreaseAll()
@@ -183,8 +173,8 @@ class Exp3QueueAlgorithm:
             cum_pta += self.articles[x.id].pta
             if cum_pta >r:
                 return x
-    def updateParameters(self, pickedArticle, userArrived, click, time_):   # parameters : (pickedArticle, Nun of articles in article pool, click)
-        self.articles[pickedArticle.id].updateWeight(self.ArticleNum, click)
+    def updateParameters(self, pickedArticle, ArticleNum, click):   # parameters : (pickedArticle, Nun of articles in article pool, click)
+        self.articles[pickedArticle.id].updateWeight(ArticleNum, click)
         if self.decay:
             self.applyDecayToAll(1)
     
@@ -195,31 +185,23 @@ class Exp3QueueAlgorithm:
     def getarticleCTR(self, article_id):
         return self.articles[article_id].stats.CTR
 
-    def getLearntParams(self, article_id):
-        return np.zeros(self.dimension)
-
-
 class UCB1Algorithm:
-    def __init__(self, decay = None, dimension = 5):
+    def __init__(self, decay = None):
         self.articles = {}
         self.decay = decay
-        self.dimension = dimension
-    def decide(self, pool_articles, user, time_): #parameters:(article pool, number of times that has been played)
+    def decide(self, pool_articles, allNumPlayed): #parameters:(article pool, number of times that has been played)
         articlePicked = None
         for x in pool_articles:
             if x.id not in self.articles:
                 self.articles[x.id] = UCB1Struct(x.id)
-        
-        allNumPlayed = sum([self.articles[x.id].numPlayed for x in pool_articles])                
-        for x in pool_articles:
             x_pta = self.articles[x.id].updatePta(allNumPlayed)
             
             if self.articles[x.id].numPlayed == 0:
-                articlePicked = x
+                articlePicked = x 
                 return articlePicked
             return max(np.random.permutation([(x, self.articles[x.id].pta) for x in pool_articles]), key = itemgetter(1))[0]
             
-    def updateParameters(self, pickedArticle, userArrived, click, time_):  #parameters: (pickedArticle, click)
+    def updateParameters(self, pickedArticle, click):  #parameters: (pickedArticle, click)
         self.articles[pickedArticle.id].updateParameter( click)
         if self.decay:
             self.applyDecayToAll(1)
@@ -228,7 +210,4 @@ class UCB1Algorithm:
             self.articles[key].applyDecay(self.decay, duration)
     def getarticleCTR(self, article_id):
         return self.articles[article_id].stats.CTR
-
-    def getLearntParams(self, article_id):
-        return np.zeros(self.dimension)
         
