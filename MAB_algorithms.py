@@ -4,6 +4,7 @@ from random import random, choice 	# for random strategy
 from operator import itemgetter  	# for easiness in sorting and finding max and stuff
 import datetime
 import numpy as np 	# many operations are done in numpy as matrix inverse; for efficiency
+from util_functions import Stats
 
 
 class LinUCBAlgorithm:
@@ -15,8 +16,8 @@ class LinUCBAlgorithm:
 		self.last_iteration_time = 0
 
 	def decide(self, pool_articles, user, time_):
-		minPTA = 0
-		articlePicked = None
+		minPTA = float("-inf")
+		articlePicked = choice(pool_articles)
 		for x in pool_articles:
 			if x.id not in self.articles:
 				self.articles[x.id] = LinUCBStruct(self.dimension, x.id, time_)
@@ -103,21 +104,3 @@ class LinUCBStruct:
 		self.pta = self.mean + alpha * self.var
 		return self.pta
 
-
-class Stats():
-	def __init__(self):
-		self.accesses = 0.0 # times the article was chosen to be presented as the best articles
-		self.clicks = 0.0 	# of times the article was actually clicked by the user
-		self.CTR = 0.0 		# ctr as calculated by the updateCTR function
-
-	def updateCTR(self):
-		try:
-			self.CTR = self.clicks / self.accesses
-		except ZeroDivisionError: # if it has not been accessed
-			self.CTR = 0
-		return self.CTR
-
-	def addrecord(self, click):
-		self.clicks += click
-		self.accesses += 1
-		self.updateCTR()

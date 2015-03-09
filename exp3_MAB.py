@@ -131,6 +131,7 @@ class Exp3Algorithm:
             cum_pta += self.articles[x.id].pta
             if cum_pta >r:
                 return x
+        return choice(pool_articles)
     # parameters : (pickedArticle, Nun of articles in article pool, click)
     def updateParameters(self, pickedArticle, userArrived, click, time_): 
         self.articles[pickedArticle.id].updateWeight(self.ArticleNum, click)
@@ -183,6 +184,8 @@ class Exp3QueueAlgorithm:
             cum_pta += self.articles[x.id].pta
             if cum_pta >r:
                 return x
+        return choice(pool_articles)
+
     def updateParameters(self, pickedArticle, userArrived, click, time_):   # parameters : (pickedArticle, Nun of articles in article pool, click)
         self.articles[pickedArticle.id].updateWeight(self.ArticleNum, click)
         if self.decay:
@@ -210,14 +213,16 @@ class UCB1Algorithm:
             if x.id not in self.articles:
                 self.articles[x.id] = UCB1Struct(x.id)
         
-        allNumPlayed = sum([self.articles[x.id].numPlayed for x in pool_articles])                
+        allNumPlayed = sum([self.articles[x.id].numPlayed for x in pool_articles])
+
         for x in pool_articles:
             x_pta = self.articles[x.id].updatePta(allNumPlayed)
             
             if self.articles[x.id].numPlayed == 0:
                 articlePicked = x
                 return articlePicked
-            return max(np.random.permutation([(x, self.articles[x.id].pta) for x in pool_articles]), key = itemgetter(1))[0]
+        return max(np.random.permutation([(x, self.articles[x.id].pta) for x in pool_articles]), key = itemgetter(1))[0]
+
             
     def updateParameters(self, pickedArticle, userArrived, click, time_):  #parameters: (pickedArticle, click)
         self.articles[pickedArticle.id].updateParameter( click)

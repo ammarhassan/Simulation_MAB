@@ -3,6 +3,69 @@ from math import log
 import numpy as np
 from random import *
 
+
+class Stats():
+	def __init__(self):
+		self.accesses = 0.0 # times the article was chosen to be presented as the best articles
+		self.clicks = 0.0 	# of times the article was actually clicked by the user
+		self.CTR = 0.0 		# ctr as calculated by the updateCTR function
+
+	def updateCTR(self):
+		try:
+			self.CTR = self.clicks / self.accesses
+		except ZeroDivisionError: # if it has not been accessed
+			self.CTR = 0
+		return self.CTR
+
+	def addrecord(self, click):
+		self.clicks += click
+		self.accesses += 1
+		self.updateCTR()
+
+
+def calculateEntropy(array):
+	counts = 1.0* np.array(map(lambda x: x[1], Counter(array).items()))
+	counts = counts / sum(counts)
+	entropy = sum([x*log(x) for x in counts])
+	return entropy
+
+def gaussianFeature(dimension, argv ):
+	mean= argv['mean'] if 'mean' in argv else 0
+	std= argv['std'] if 'std' in argv else 1
+
+	mean_vector = np.ones(dimension)*mean
+	stdev = np.identity(dimension)*std
+	vector = np.random.multivariate_normal(np.zeros(dimension), stdev)
+	# print "vector", vector,
+
+	l2_norm = np.linalg.norm(vector, ord=2)
+	if 'l2_limit' in argv and l2_norm > argv['l2_limit']:
+		"This makes it uniform over the circular range"
+		vector = (vector / l2_norm)
+		vector = vector * (random())
+		vector = vector * argv['l2_limit']
+
+		# print "l2_limit", vector,
+
+	if mean is not 0:
+		vector = vector + mean_vector
+		# print "meanShifted",vector
+
+	return vector
+
+def featureUniform(dimension, argv):
+
+	vector = np.array([random() for _ in range(dimension)])
+
+	l2_norm = np.linalg.norm(vector, ord=2)
+	if 'l2_limit' in argv and l2_norm > argv['l2_limit']:
+		while np.linalg.norm(vector, ord=2) > argv['l2_limit']:
+			vector = np.array([random() for _ in range(dimension)])
+
+	return vector
+
+
+		
 def simulateArticlePool(self, n_articles):
 	def getEndTimes():
 		pool = range(20)
@@ -36,25 +99,3 @@ def simulateArticlePool(self, n_articles):
 	for key, st, ed in zip(articles_id, startTimes, endTimes):
 		self.articles.append(Article(key, st, ed, self.featureUniform()))
 		self.articles[-1].theta = self.featureUniform()
-
-
-def calculateEntropy(array):
-	counts = 1.0* np.array(map(lambda x: x[1], Counter(array).items()))
-	counts = counts / sum(counts)
-	entropy = sum([x*log(x) for x in counts])
-	return entropy
-
-def gaussianFeature(dimension, **argv ):
-	mean= argv['mean'] if 'mean' in argv else 0
-	std= argv['std'] if 'std' in argv else .2
-
-	mean = np.ones(dimension)*mean
-	stdev = np.identity(dimension)*std
-	vector = np.random.multivariate_normal(mean, stdev)
-	if 'scaled' in argv and argv['scaled']:
-		return vector / np.linalg.norm(vector, ord=2)
-	else: return vector
-
-def featureUniform(dimension, **argv):
-	feature = np.array([random() for _ in range(dimension)])
-	return feature / sum(feature)
