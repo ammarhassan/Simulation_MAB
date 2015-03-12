@@ -1,6 +1,6 @@
 import cPickle
 import numpy as np
-from util_functions import calculateEntropy, featureUniform, gaussianFeature
+from util_functions import calculateEntropy, featureUniform, gaussianFeature, fileOverWriteWarning
 from random import sample
 
 class Article():
@@ -49,12 +49,18 @@ class Article():
 		title("Observing Learnt Parameter Difference")
 
 class ArticleManager():
-	def __init__(self, iterations, dimension):
+	def __init__(self, iterations, dimension, thetaFunc, argv, n_articles, poolArticles):
 		self.iterations = iterations
 		self.dimension = dimension
 		self.signature = ""
+		self.n_articles = n_articles
+		self.poolArticles = poolArticles
+		self.thetaFunc = thetaFunc
+		self.argv = argv
+		self.signature = "A-"+str(self.n_articles)+"+PA"+ str(self.poolArticles)+"+TF-"+self.thetaFunc.__name__
 
-	def saveArticles(self, Articles, filename):
+	def saveArticles(self, Articles, filename, force=False):
+		fileOverWriteWarning(filename, force)
 		with open(filename, 'w') as f:
 			cPickle.dump(Articles, f)
 
@@ -62,11 +68,11 @@ class ArticleManager():
 		with open(filename, 'r') as f:
 			return cPickle.load(f)
 
-	def simulateArticlePool(self, n_articles, thetaFunc, argv, poolArticles=None):
+	def simulateArticlePool(self):
 		def getEndTimes():
-			pool = range(poolArticles)
+			pool = range(self.poolArticles)
 			endTimes = [0 for i in startTimes]
-			last = poolArticles
+			last = self.poolArticles
 			for i in range(1,intervals):
 				chosen = sample(pool, 5)
 				for c in chosen:
@@ -78,22 +84,22 @@ class ArticleManager():
 				endTimes[p] = self.iterations
 			return endTimes
 
-		self.signature = "A-"+str(n_articles)+"+TF-"+thetaFunc.__name__
-		articles = []
-		articles_id = range(n_articles)
 		
-		if poolArticles and poolArticles < n_articles:
-			remainingArticles = n_articles - poolArticles
+		articles = []
+		articles_id = range(self.n_articles)
+		
+		if self.poolArticles and self.poolArticles < self.n_articles:
+			remainingArticles = self.n_articles - self.poolArticles
 			intervals = remainingArticles / 5 + 1
 			intervalLength = self.iterations / intervals
-			startTimes = [0 for x in range(poolArticles)] + [
+			startTimes = [0 for x in range(self.poolArticles)] + [
 				(1+ int(i/5))*intervalLength for i in range(remainingArticles)]
 			endTimes = getEndTimes()
 		else:
-			startTimes = [0 for x in range(n_articles)]
-			endTimes = [self.iterations for x in range(n_articles)]
+			startTimes = [0 for x in range(self.n_articles)]
+			endTimes = [self.iterations for x in range(self.n_articles)]
 
 		for key, st, ed in zip(articles_id, startTimes, endTimes):
 			articles.append(Article(key, st, ed, featureUniform(self.dimension, {})))
-			articles[-1].theta = thetaFunc(self.dimension, argv=argv)
+			articles[-1].theta = self.thetaFunc(self.dimension, argv=self.argv)
 		return articles

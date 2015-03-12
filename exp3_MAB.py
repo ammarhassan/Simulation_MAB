@@ -64,6 +64,7 @@ class Exp3Struct:
     def updateWeight(self, n_arms, reward):
         X = reward / self.pta
         growth_factor = math.exp((self.gamma / n_arms)*X)
+
         self.weights = self.weights * growth_factor
     def updatePta(self, n_arms, total_weight):
         self.pta = (1-self.gamma) * (self.weights / total_weight)
@@ -109,7 +110,7 @@ class RandomAlgorithm:
         return self.articles[article_id].stats.CTR
         
 class Exp3Algorithm:
-    def __init__(self, gamma, decay = None, dimension = 5):
+    def __init__(self, dimension, gamma, decay = None):
         self.articles = {}
         self.gamma = gamma
         self.decay = decay
@@ -149,7 +150,7 @@ class Exp3Algorithm:
         return np.zeros(self.dimension)
 
 class Exp3QueueAlgorithm:
-    def __init__(self, gamma, decay = None, dimension=5):
+    def __init__(self, dimension, gamma, decay = None):
         self.articles = {}
         self.gamma = gamma
         self.decay = decay
@@ -203,7 +204,7 @@ class Exp3QueueAlgorithm:
 
 
 class UCB1Algorithm:
-    def __init__(self, decay = None, dimension = 5):
+    def __init__(self, dimension, decay = None):
         self.articles = {}
         self.decay = decay
         self.dimension = dimension

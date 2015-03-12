@@ -1,132 +1,93 @@
 import math
 import numpy as np
 from MAB_algorithms import *
+from exp3_MAB import Exp3Algorithm, UCB1Algorithm, Exp3QueueAlgorithm
 import datetime
 from matplotlib.pylab import *
 from random import sample
-from util_functions import calculateEntropy, featureUniform, gaussianFeature
+from scipy.stats import lognorm
+from util_functions import *
 from Articles import *
+from Users import *
 import json
-
-
-class batchAlgorithmStats():
-	def __init__(self):
-		self.stats = Stats()
-		self.clickArray = []
-		self.accessArray = []
-		self.CTRArray = []
-		self.time_ = []
-		self.poolMSE = []
-		self.articlesCTR = {}
-		self.articlesPicked_temp = []
-		self.entropy = []
-
-	def addRecord(self, iter_, poolMSE, poolArticles):
-		self.clickArray.append(self.stats.clicks)
-		self.accessArray.append(self.stats.accesses)
-		self.CTRArray.append(self.stats.CTR)
-		self.time_.append(iter_)
-		self.poolMSE.append(poolMSE)
-		for x in poolArticles:
-			if x in self.articlesCTR:
-				self.articlesCTR[x].append(poolArticles[x])
-			else:
-				self.articlesCTR[x] = [poolArticles[x]]
-		self.entropy.append(calculateEntropy(self.articlesPicked_temp))
-		self.articlesPicked_temp = []
-
-	def iterationRecord(self, click, articlePicked):
-		self.stats.addrecord(click)
-		self.articlesPicked_temp.append(articlePicked)
-
-	def plotArticle(self, article_id):
-		plot(self.time_, self.articlesCTR[article_id])
-		xlabel("Iterations")
-		ylabel("CTR")
-		title("")
-
-class SpecialStats(Stats):
-	def __init__(self):
-		super(SpecialStats, self).__init__()
-		self.pickedArticle = []
-
-	def addRecord(self, ):
-		pass
-
-class User():
-	def __init__(self, id, featureVector=None):
-		self.id = id
-		self.featureVector = featureVector
-
-class UserManager():
-	def __init__(self, dimension, iterations, filename):
-		self.userContexts = []
-		self.dimension = dimension
-		self.iterations = iterations
-		self.filename = filename
-
-	def simulateContextfromUsers(self, numUsers, featureFunction, **argv):
-		"""users of all context arriving uniformly"""
-		usersids = range(numUsers)
-		users = []
-		for key in usersids:
-			users.append(User(key, featureFunction(self.dimension, argv=argv)))
-		
-		with open(self.filename, 'w') as f:
-			for it in range(self.iterations):
-				chosen = choice(users)
-				f.write(json.dumps((chosen.id, chosen.featureVector.tolist()))+'\n')
-
-	def randomContexts(self, featureFunction, **argv):
-		with open(self.filename, 'w') as f:
-			for it in range(self.iterations):
-				f.write(json.dumps((0, featureFunction(self.dimension, argv=argv).tolist() ))+'\n')
-
-	def contextsIterator(self):
-		with open(self.filename, 'r') as f:
-			for line in f:
-				id, FV = json.loads(line)
-				yield User(id, np.array(FV))
-		
+from conf import sim_files_folder, result_folder
+import os
 
 class simulateOnlineData():
-	def __init__(self, dimension, iterations, articles,
-		noise=lambda x: np.random.normal(scale=x),
-		userGenerator=None,
-		type="ConstantTheta", environmentVars={}):
+	def __init__(self, dimension, iterations, articles, userGenerator,
+		batchSize=1000,
+		noise=lambda : np.random.normal(scale=.001),
+		type_="ConstantTheta", environmentVars=None,
+		signature=""):
+
+		self.simulation_signature = signature
 		self.dimension = dimension
-		self.type = type
+		self.type = type_
+		self.environmentVars = environmentVars
 		self.iterations = iterations
 		self.noise = noise
-
-		self.alg_perf = {}
+		self.batchSize = batchSize
 		self.iter_ = 0
-		self.batchSize = 1000
+		
 		self.startTime = None
 
 		self.articles = articles
 		self.articlePool = {}
-		"""the temp memory for storing the articles click from expectations
-		for each iteration"""
+		"""the temp memory for storing the articles click from expectations for each iteration"""
 		self.articlesPicked = [] 
-		self.userGenerator = userGenerator
-
+		self.alg_perf = {}
 		self.reward_vector = {}
 
-		self.environmentVars = environmentVars
+		self.userGenerator = userGenerator
 		self.initiateEnvironment()
 
 	def initiateEnvironment(self):
+		env_sign = self.type
 		if self.type=="evolveTheta":
 			for x in self.articles:
-				# "Find a random direction"
+				"# Find a random direction"
 				x.testVars["deltaTheta"] = (featureUniform(self.dimension) - x.theta)
-				# "Make the change vector of with stepSize norm"
-				x.testVars["deltaTheta"] = x.testVars["deltaTheta"] / np.linalg.norm(x.testVars["deltaTheta"])*self.environmentVars["stepSize"]
+				"# Make the change vector of with stepSize norm"
+				x.testVars["deltaTheta"] = x.testVars["deltaTheta"] / np.linalg.norm(
+					x.testVars["deltaTheta"])*self.environmentVars["stepSize"]
+		elif self.type=="shrinkTheta":
+			if "type" in self.environmentVars and self.environmentVars["type"]=="contextDependent":
+				for x in self.articles:
+					x.testVars["shrinker"] = np.diag(1 - featureUniform(self.dimension) * self.environmentVars["shrink"])
+				env_sign += "+CD"
+			else:
+				for x in self.articles:
+					x.testVars["shrinker"] = np.diag(1 - featureUniform(self.dimension) * random() *self.environmentVars["shrink"])
+			env_sign += "+rate-" + str(self.environmentVars["shrink"])
+
+		elif self.type=="shrinkOrd2":
+			for x in self.articles:
+				# x.initialTheta = x.theta
+				# x.testVars["shrinker"] = random()
+				x.testVars["shrinker"] = np.diag(np.ones(self.dimension) * random() *self.environmentVars["shrink"])
+			env_sign += "+rate-" + str(self.environmentVars["shrink"])
+
+		elif self.type=="abruptThetaChange":
+			env_sign += 'reInit-' + str(self.environmentVars["reInitiate"]//1000)+'k'
+		elif self.type=="popularityShift":
+			env_sign += "+SL-"+str(self.environmentVars["sigmaL"])+"+SU-"+str(self.environmentVars["sigmaU"])
+			for x in self.articles:
+				x.initialTheta = x.theta
+				sigma = self.environmentVars["sigmaL"] + random()*(self.environmentVars["sigmaU"] - self.environmentVars["sigmaL"])
+
+				m = lognorm(s=[sigma], loc=0).pdf(
+						[(i+1.0)/self.iterations for i in range(self.iterations)])
+				x.testVars["popularity"] = m/max(m)
+
+
+		sig_name = [("It",str(self.iterations//1000)+'k')]
+		sig_name = '_'.join(['-'.join(tup) for tup in sig_name])
+		self.simulation_signature += '_' + env_sign + '_' + sig_name
+
 
 	def regulateEnvironment(self):
 		self.reward_vector = {}
-		self.articlePool = self.articles
+		self.articlePool = [x for x in self.articles if self.iter_ <= x.endTime and self.iter_ >= x.startTime]
 		if self.type=="abruptThetaChange":
 			if self.iter_%self.environmentVars["reInitiate"]==0 and self.iter_>1:
 				for x in self.articlePool:
@@ -141,7 +102,16 @@ class simulateOnlineData():
 					x.theta = gaussianFeature(self.dimension, scaled=True)
 		elif self.type=="shrinkTheta":
 			for x in self.articlePool:
-				x.theta = np.dot(np.identity(self.dimension)*self.environmentVars['shrinker'], x.theta)
+				x.theta = np.dot(x.testVars['shrinker'], x.theta)
+
+		elif self.type=="shrinkOrd2":
+			for x in self.articlePool:
+				temp = np.identity(self.dimension) - (x.testVars['shrinker']*(self.iter_ - x.startTime)*1.0/self.iterations)
+				x.theta = np.dot(temp, x.theta)
+				# x.theta = np.dot(1-x.testVars['shrinker']*(self.iter_*1.0 - x.startTime)/self.iterations, x.theta)
+		elif self.type=="popularityShift":
+			for x in self.articlePool:
+				x.theta = x.initialTheta * (x.testVars["popularity"][self.iter_ - x.startTime])
 
 	def getUser(self):
 		return self.userGenerator.next()
@@ -160,7 +130,12 @@ class simulateOnlineData():
 		if pickedArticle.id not in self.reward_vector:
 			reward = np.dot(pickedArticle.theta, userArrived.featureVector)
 			self.reward_vector[pickedArticle.id] = reward + self.noise()
-		return self.reward_vector[pickedArticle.id]		
+		return self.reward_vector[pickedArticle.id]	
+
+	def getPositiveReward(self, pickedArticle, userArrived): 
+		reward = self.getReward(pickedArticle, userArrived)
+		if reward < 0 : reward = 0
+		return reward
 
 	def runAlgorithms(self, algorithms):
 		self.startTime = datetime.datetime.now()
@@ -170,7 +145,9 @@ class simulateOnlineData():
 			userArrived = self.getUser()
 			for alg_name, alg in algorithms.items():
 				pickedArticle = alg.decide(self.articlePool, userArrived, self.iter_)
-				click = self.getClick(pickedArticle, userArrived)
+				click = self.getReward(pickedArticle, userArrived)
+				if click < 0 :
+					print click
 				alg.updateParameters(pickedArticle, userArrived, click, self.iter_)
 
 				self.iterationRecord(alg_name, userArrived.id, click, pickedArticle.id)
@@ -194,7 +171,7 @@ class simulateOnlineData():
 
 		print "Iteration %d"%self.iter_, "Pool ", len(self.articlePool)," Elapsed time", datetime.datetime.now() - self.startTime
 
-	def analyzeExperiment(self, alpha, decay):
+	def analyzeExperiment(self, result_folder, alpha, decay):
 		"Plot vertical lines at specific events"
 		def plotLines(axes_, xlocs):
 			for xloc, color in xlocs:
@@ -206,54 +183,53 @@ class simulateOnlineData():
 					axes_.plot(xSet, ySet, color)
 
 		xlocs = [(list(set(map(lambda x: x.startTime, self.articles))), "black")]
+		sig_name = self.simulation_signature+"_alp-"+str(alpha)+"dec-"+str(decay)+".pdf"
 
 		if self.type=="abruptThetaChange":
 			ch_theta_loc = [i*self.environmentVars["reInitiate"] for i in range(self.iterations//self.environmentVars["reInitiate"])]
-			env_name = "Abrupt-" + str(self.environmentVars["reInitiate"]//1000)+"k"
 			xlocs.append((ch_theta_loc, "red"))
-		elif self.type=="evolveTheta":
-			env_name = "evolveTheta-"+str(self.environmentVars["stepSize"])
-		else:
-			env_name = "Const"
 
-		sig_name = env_name+"_A"+str(len(self.articles))+"_It"+str(self.iterations//1000)+"k_alp-"+str(alpha)+"dec-"+str(decay)+".png"
 
 		f, axarr = plt.subplots(3, sharex=True)
 		for alg_name in self.alg_perf:
 			axarr[0].plot(self.alg_perf[alg_name].time_, self.alg_perf[alg_name].CTRArray)
-		
+			
+			batchCTR = getBatchStats(self.alg_perf[alg_name].clickArray)/getBatchStats(self.alg_perf[alg_name].accessArray)
+			axarr[1].plot(self.alg_perf[alg_name].time_, batchCTR)
+
+			axarr[2].plot(self.alg_perf[alg_name].time_, self.alg_perf[alg_name].entropy)
+
 		# axarr[0].set_xlabel("Iteration")
-		axarr[0].set_ylabel("Cumulative CTR")
-		axarr[0].set_title("CTR Performance")
+		axarr[0].legend(self.alg_perf.keys(), loc=1, prop={'size':6}, fancybox=True, framealpha=0.3)
+		axarr[0].set_ylabel("Cumulative reward")
+		axarr[0].set_title("Performance of MABs")
+
+		axarr[1].set_ylabel("Batch Reward")
+		axarr[1].legend(self.alg_perf.keys(), loc=1, prop={'size':6}, fancybox=True, framealpha=0.3)
+
+		axarr[2].set_ylabel("Entropy of picked \n actions")
+
 		plotLines(axarr[0], xlocs)
-		axarr[0].legend(self.alg_perf.keys(), loc=2, prop={'size':8})
-
-		for alg_name, record in self.alg_perf.items():
-			poolBatchMSE = np.concatenate((np.array([record.poolMSE[0]]), np.diff(record.poolMSE)))
-			axarr[1].plot(self.alg_perf[alg_name].time_, poolBatchMSE)
-		axarr[1].set_ylabel("MSE")
 		plotLines(axarr[1], xlocs)
-		axarr[1].legend(self.alg_perf.keys(), loc=2, prop={'size':8})
+		plotLines(axarr[2], xlocs)		
 
-		for alg_name, record in self.alg_perf.items():
-			axarr[2].plot(self.alg_perf[alg_name].time_, record.entropy)
-		axarr[2].set_xlabel("Iteration")
-		axarr[2].set_ylabel("Entropy")
-		plotLines(axarr[2], xlocs)
-		axarr[2].legend(self.alg_perf.keys(), loc=2, prop={'size':8})
+		
 
-		savefig("SimulationResults/"+sig_name)
+		# axarr[1].legend(self.alg_perf.keys(), loc=2, prop={'size':8})
 
-	def writeResults(self, alpha, decay):
+		
+		savefig(os.path.join(result_folder, sig_name), format="pdf")
+
+	def writeResults(self, filename, alpha, decay, numPool=None):
 		# write performance in csv file
 		try:
-			with open("SimulationResults/recordPerformance.csv", 'r') as f:
+			with open(filename, 'r') as f:
 				pass
 		except:
-			with open("SimulationResults/recordPerformance.csv", 'w') as f:
+			with open(filename, 'w') as f:
 				f.write("Algorithm, SimulationType, environmentVars, #Articles,#users,iterations,CTR\n")
 
-		with open("SimulationResults/recordPerformance.csv", 'a') as f:
+		with open(filename, 'a') as f:
 			for alg_name in self.alg_perf:
 				res = [alg_name,
 						self.type,
@@ -263,7 +239,9 @@ class simulateOnlineData():
 						str(self.alg_perf[alg_name].CTRArray[-1]),
 						str(alpha),
 						str(decay),
+						str(numPool),
 						str(mean(self.alg_perf[alg_name].entropy)),
+						str(datetime.datetime.now()),
 				]
 				f.write('\n'+','.join(res))
 
@@ -278,40 +256,68 @@ class simulateOnlineData():
 		return sum(map(abs, article.theta - alg.getLearntParams(article.id)))
 
 
+
 if __name__ == '__main__':
+	# def constructSignature():
+	# 	signature = AM.signature + 
 
-	iterations = 10000
-	dimension = 5
+	iterations = 30000
+	dimension = 2
 	alpha = .3
+
+	n_articles = 50
+	shrinks = [.001]
+	poolArticles = [20]
+	n_users = 100
 	decay = .99
-	n_articles = 10
-	n_users = 1000
-	userFilename = "users.p"
+	batchSize = 100
 
-	articleManager = ArticleManager(iterations, dimension)
-	articles = articleManager.simulateArticlePool(n_articles=n_articles)
-
+	userFilename = os.path.join(sim_files_folder, "users"+str(iterations)+".p")
+	resultsFile = os.path.join(result_folder, "Results.csv")
+	# sim_type = "ConstantTheta"
 	UM = UserManager(dimension, iterations, userFilename)
-	# UM.simulateContextfromUsers(1000,gaussianFeature, argv={"scaled":True, 'mean':0, 'std':.5})
+	# UM.randomContexts(featureUniform, argv={"l2_limit":1})
+	
 
-	" articles can be saved by following instruction"
-	#articleManager.saveArticles(articles, 'articles.p')
-	" saved articles can be loaded by the following instruction"
-	# articles = articleManager.loadArticles('articles.p')
+	for p_art in poolArticles:
 
-	simExperiment = simulateOnlineData(articles=articles,
-						userGenerator = UM.contextsIterator(),
-						dimension=dimension,
-						iterations=iterations,
-						# type="abruptThetaChange",environmentVars={"reInitiate":100000},
-						type="ConstantTheta",environmentVars={},
-						# type="evolveTheta", environmentVars={"stepSize":.0000001},
-					)
+		articlesFilename = os.path.join(sim_files_folder, "articles"+str(n_articles)+"+AP-"+str(p_art)+"+IT-"+str(iterations)+".p")
+		AM = ArticleManager(iterations, dimension, n_articles=n_articles, 
+				poolArticles=p_art, thetaFunc=featureUniform,  argv={'l2_limit':1})
+		# articles = AM.simulateArticlePool()	
+		# AM.saveArticles(articles, articlesFilename)	
+		
+		# print map(lambda x:x.startTime, articles), map(lambda x:x.endTime, articles)
 
-	LinUCB = LinUCBAlgorithm(dimension=dimension, alpha=alpha)
-	decLinUCB = LinUCBAlgorithm(dimension=dimension, alpha=alpha, decay=decay)
+		for shrink in shrinks:
+			UM = UserManager(dimension, iterations, userFilename)
+			articles = AM.loadArticles(articlesFilename)
 
-	simExperiment.runAlgorithms({"LinUCB":LinUCB, "decLinUCB":decLinUCB})
-	simExperiment.analyzeExperiment(alpha, decay)
-	simExperiment.writeResults(alpha, decay)
+			simExperiment = simulateOnlineData(articles=articles,
+								userGenerator = UM.contextsIterator(),
+								dimension  = dimension,
+								iterations = iterations,
+								noise = lambda : 0,
+								batchSize = batchSize,
+								# type_ = "abruptThetaChange",environmentVars={"reInitiate":100000},
+								# type_ = "ConstantTheta",environmentVars={},
+								# type_ = "evolveTheta", environmentVars={"stepSize":.0000001},
+								# type_ = "shrinkTheta", environmentVars={"shrink":shrink},
+								type_ = "shrinkOrd2", environmentVars={"shrink":shrink},
+								# type_ = "popularityShift", environmentVars={"sigmaL":1, "sigmaU":2},
+								signature = AM.signature,
+							)
+			print "Starting for ", simExperiment.simulation_signature
+			algorithms = {}
+			for decay in [.999]:
+				algorithms["decLinUCB=" + str(decay)] = LinUCBAlgorithm(dimension=dimension, alpha=alpha, decay=decay)
+			algorithms["LinUCB"] = LinUCBAlgorithm(dimension=dimension, alpha=alpha)
+			algorithms["UCB1"] = UCB1Algorithm(dimension=dimension)
+			algorithms["EXP3"] = Exp3Algorithm(dimension=dimension,gamma=.5)
+			# algorithms["decEXP3=.9"] = Exp3Algorithm(dimension=dimension, gamma=.5, decay = .9)
+			# algorithms["EXP3Queue"] = Exp3QueueAlgorithm(dimension=dimension, gamma=.5)
+
+			simExperiment.runAlgorithms(algorithms)
+			simExperiment.analyzeExperiment(result_folder, alpha, decay)
+			simExperiment.writeResults(resultsFile, alpha, decay, p_art)
 
