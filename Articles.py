@@ -49,7 +49,7 @@ class Article():
 		title("Observing Learnt Parameter Difference")
 
 class ArticleManager():
-	def __init__(self, iterations, dimension, thetaFunc, argv, n_articles, poolArticles):
+	def __init__(self, iterations, dimension, thetaFunc, argv, n_articles, poolArticles, influx=5):
 		self.iterations = iterations
 		self.dimension = dimension
 		self.signature = ""
@@ -58,6 +58,7 @@ class ArticleManager():
 		self.thetaFunc = thetaFunc
 		self.argv = argv
 		self.signature = "A-"+str(self.n_articles)+"+PA"+ str(self.poolArticles)+"+TF-"+self.thetaFunc.__name__
+		self.influx = influx
 
 	def saveArticles(self, Articles, filename, force=False):
 		fileOverWriteWarning(filename, force)
@@ -74,12 +75,12 @@ class ArticleManager():
 			endTimes = [0 for i in startTimes]
 			last = self.poolArticles
 			for i in range(1,intervals):
-				chosen = sample(pool, 5)
+				chosen = sample(pool, self.influx)
 				for c in chosen:
 					endTimes[c] = intervalLength * i
 				pool = [x for x in pool if x not in chosen]
-				pool += [x for x in range(last,last+5)]
-				last+=5
+				pool += [x for x in range(last,last+self.influx)]
+				last+=self.influx
 			for p in pool:
 				endTimes[p] = self.iterations
 			return endTimes
@@ -90,10 +91,10 @@ class ArticleManager():
 		
 		if self.poolArticles and self.poolArticles < self.n_articles:
 			remainingArticles = self.n_articles - self.poolArticles
-			intervals = remainingArticles / 5 + 1
+			intervals = remainingArticles / self.influx + 1
 			intervalLength = self.iterations / intervals
 			startTimes = [0 for x in range(self.poolArticles)] + [
-				(1+ int(i/5))*intervalLength for i in range(remainingArticles)]
+				(1+ int(i/self.influx))*intervalLength for i in range(remainingArticles)]
 			endTimes = getEndTimes()
 		else:
 			startTimes = [0 for x in range(self.n_articles)]
