@@ -261,31 +261,35 @@ if __name__ == '__main__':
 	# def constructSignature():
 	# 	signature = AM.signature + 
 
-	iterations = 30000
-	dimension = 2
+	iterations = 20000
+	dimension = 5
 	alpha = .3
 
-	n_articles = 50
-	shrinks = [.001]
-	poolArticles = [20]
+	n_articles = 2000
+	shrinks = [.1]
+	poolArticles = [1500]
+	articleInflux = 100
 	n_users = 100
 	decay = .99
 	batchSize = 100
 
-	userFilename = os.path.join(sim_files_folder, "users"+str(iterations)+".p")
+	userFilename = os.path.join(sim_files_folder, "users+it-"+str(iterations)+"+dim-"+str(dimension)+".p")
 	resultsFile = os.path.join(result_folder, "Results.csv")
 	# sim_type = "ConstantTheta"
+
+	"Run if there is no such file with these settings; if file already exist then comment out the below funciton"
 	UM = UserManager(dimension, iterations, userFilename)
-	# UM.randomContexts(featureUniform, argv={"l2_limit":1})
+	UM.randomContexts(featureUniform, argv={"l2_limit":1})
 	
 
 	for p_art in poolArticles:
 
-		articlesFilename = os.path.join(sim_files_folder, "articles"+str(n_articles)+"+AP-"+str(p_art)+"+IT-"+str(iterations)+".p")
+		articlesFilename = os.path.join(sim_files_folder, "articles"+str(n_articles)+"+AP-"+str(p_art)+"+influx"+str(articleInflux)+"+IT-"+str(iterations)+"+dim"+str(dimension)+".p")
 		AM = ArticleManager(iterations, dimension, n_articles=n_articles, 
-				poolArticles=p_art, thetaFunc=featureUniform,  argv={'l2_limit':1})
-		# articles = AM.simulateArticlePool()	
-		# AM.saveArticles(articles, articlesFilename)	
+				poolArticles=p_art, thetaFunc=featureUniform,  argv={'l2_limit':1},
+				influx=articleInflux)
+		# articles = AM.simulateArticlePool()
+		# AM.saveArticles(articles, articlesFilename, force=False)
 		
 		# print map(lambda x:x.startTime, articles), map(lambda x:x.endTime, articles)
 
