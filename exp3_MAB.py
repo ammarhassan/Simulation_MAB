@@ -26,7 +26,7 @@ class Stats():
         self.updateCTR()
 
 
-class myQueue:  # Basic structure for popularity Queue
+class PopularityQueue:  # Basic structure for popularity Queue
     def __init__(self):
         self.dic = {}
         self.QueueLength = len(self.dic)
@@ -75,7 +75,7 @@ class Exp3Struct:
 class UCB1Struct:
     def __init__(self, id):
         self.id = id
-        self.totalReward = 0
+        self.totalReward = 0.0
         self.numPlayed = 0
         self.pta = 0.0
         self.stats = Stats()
@@ -92,10 +92,30 @@ class UCB1Struct:
             self.pta = self.totalReward / self.numPlayed + np.sqrt(2*np.log(allNumPlayed) / self.numPlayed)
         except ZeroDivisionError:
             self.pta = 0.0
-        return self.pta
+        #return self.pta
     def applyDecay(self, decay, duration):  # where to add decay
         self.totalReward *=(decay**duration)
-
+class GreedyStruct:
+    def __init__(self, id):
+        self.id = id
+        self.totalReward = 0.0
+        self.numPlayed = 0
+        self.stats = Stats()
+        self.pta = 0.0
+    def reInitilize(self):
+        self.totalReward = 0.0
+        self.numPlayed = 0
+        self.pta = 0.0
+    def updateParameter(self, click):
+        self.totalReward += click
+        self.numPlayed += 1
+    def updatePta(self):
+        try:
+            self.pta = self.totalReward / self.numPlayed
+        except ZeroDivisionError:
+            self.pta = 0.0
+        #return self.pta
+        
 class RandomAlgorithm:
     def __init__(self):
         self.articles = {}
@@ -104,7 +124,7 @@ class RandomAlgorithm:
             if x.id not in pool_articles:
                 self.articles[x.id] = RandomStruct(x.id)
         return choice(pool_articles)
-    def updateParameters(self, pickedArticle, ArticleNum, click): # meaningless, just add this part to make it consistent 
+    def updateParameters(self, pickedArticle, PoolArticleNum, click): # meaningless, just add this part to make it consistent 
         a = 1        
     def getarticleCTR(self, article_id):
         return self.articles[article_id].stats.CTR
@@ -115,11 +135,11 @@ class Exp3Algorithm:
         self.gamma = gamma
         self.decay = decay
         self.dimension = dimension
-        self.ArticleNum = 0
+        self.PoolArticleNum = 0
     
     def decide(self, pool_articles, user, time_): #(paramters: article pool)
-        "Should self.ArticleNum be total articles or total pool_articles?? Please correct the following line if its wrong."
-        self.ArticleNum = len(pool_articles)
+        "Should self.PoolArticleNum be total articles or total pool_articles?? Please correct the following line if its wrong."
+        self.PoolArticleNum = len(pool_articles)
         r = random.random()
         cum_pta = 0.0        
         total_Weights = 0.0
@@ -135,7 +155,7 @@ class Exp3Algorithm:
         return choice(pool_articles)
     # parameters : (pickedArticle, Nun of articles in article pool, click)
     def updateParameters(self, pickedArticle, userArrived, click, time_): 
-        self.articles[pickedArticle.id].updateWeight(self.ArticleNum, click)
+        self.articles[pickedArticle.id].updateWeight(self.PoolArticleNum, click)
         if self.decay:
             self.applyDecayToAll(1)
     
@@ -155,11 +175,11 @@ class Exp3QueueAlgorithm:
         self.gamma = gamma
         self.decay = decay
         self.dimension = dimension
-        self.ArticleNum = 0
+        self.PoolArticleNum = 0
     
     def decide(self, pool_articles, user, time_):  #(paramters: article pool)
-        self.ArticleNum = len(pool_articles)
-        MyQ = myQueue()
+        self.PoolArticleNum = len(pool_articles)
+        MyQ = PopularityQueue()
         QueueSize = 15
         MyQ.decreaseAll()
         
@@ -188,7 +208,61 @@ class Exp3QueueAlgorithm:
         return choice(pool_articles)
 
     def updateParameters(self, pickedArticle, userArrived, click, time_):   # parameters : (pickedArticle, Nun of articles in article pool, click)
-        self.articles[pickedArticle.id].updateWeight(self.ArticleNum, click)
+        self.articles[pickedArticle.id].updateWeight(self.PoolArticleNum, click)
+        if self.decay:
+            self.applyDecayToAll(1)
+    
+    def applyDecayToAll(self, duration):
+        for key in self.articles:
+            self.articles[key].applyDecay(self.decay, duration)
+    
+    def getarticleCTR(self, article_id):
+        return self.articles[article_id].stats.CTR
+
+    def getLearntParams(self, article_id):
+        return np.zeros(self.dimension)
+
+
+class Exp3OrderQueueAlgorithm:
+    def __init__(self, dimension, gamma, decay = None):
+        self.articles = {}
+        self.gamma = gamma
+        self.decay = decay
+        self.dimension = dimension
+        self.PoolArticleNum = 0
+    
+    def decide(self, pool_articles, user, time_):  #(paramters: article pool)
+        self.PoolArticleNum= len(pool_articles)
+        MyQ = OrderQueue()
+        QueueSize = 15
+        MyQ.decreaseAll()
+        
+        r = random.random()
+        cum_pta = 0.0        
+        total_Weights = 0.0
+        for x in pool_articles:
+            if x.id not in self.articles:
+                self.articles[x.id] = Exp3Struct(self.gamma, x.id)
+            
+            if MyQ.QueueLength < QueueSize:
+                MyQ.push(x)
+            elif x.id in MyQ.dic:
+                MyQ.dic[x.id] += 1
+            else:
+                a=MyQ.pop()
+                self.articles[a].reInitilize()
+                MyQ.push(x.id)
+                
+            total_Weights += self.articles[x.id].weights
+        for x in pool_articles:
+            self.articles[x.id].updatePta(self.PoolArticleNum, total_Weights)
+            cum_pta += self.articles[x.id].pta
+            if cum_pta >r:
+                return x
+        return choice(pool_articles)
+
+    def updateParameters(self, pickedArticle, userArrived, click, time_):   # parameters : (pickedArticle, Nun of articles in article pool, click)
+        self.articles[pickedArticle.id].updateWeight(self.PoolArticleNum, click)
         if self.decay:
             self.applyDecayToAll(1)
     
@@ -217,7 +291,7 @@ class UCB1Algorithm:
         allNumPlayed = sum([self.articles[x.id].numPlayed for x in pool_articles])
 
         for x in pool_articles:
-            x_pta = self.articles[x.id].updatePta(allNumPlayed)
+            self.articles[x.id].updatePta(allNumPlayed)
             
             if self.articles[x.id].numPlayed == 0:
                 articlePicked = x
@@ -237,4 +311,40 @@ class UCB1Algorithm:
 
     def getLearntParams(self, article_id):
         return np.zeros(self.dimension)
+
+class EpsilonGreedyAlgorithm:
+    def __init__(self, dimension, epsilon, decay = None):
+        self.articles = {}
+        self.decay = decay
+        self.dimension = dimension
+        self.epsilon = epsilon
+    def decide(self, pool_articles, user, time_):
+        article_Picked = None
+        if random.random() < self.epsilon:
+            article_Picked = choice(pool_articles)
+        else:
+            for x in pool_articles:
+                if x.id not in self.articles:
+                    self.articles[x.id] = GreedyStruct(x.id)
+                self.articles[x.id].updatePta()
+            article_Picked = max(np.random.permutation([(x, self.articles[x.id].pta) for x in pool_articles]), key = itemgetter(1))[0]
+        return article_Picked
+    def updateParameters(self, pickedArticle, userArrived, click, time_):
+        self.articles[pickedArticle.id].updateParameter(click)    
+    
+    def getarticleCTR(self, article_id):
+        return self.articles[article_id].stats.CTR
+    
+    def getLearntParams(self, article_id):
+        return np.zeros(self.dimension)
+
+    
+        
+        
+
+                
+            
+                    
+                
+                
         
