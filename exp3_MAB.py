@@ -7,6 +7,7 @@ import datetime
 import numpy as np
 import math
 import random
+import Queue
 
 class Stats():
     def __init__(self):
@@ -224,35 +225,28 @@ class Exp3QueueAlgorithm:
 
 
 class Exp3OrderQueueAlgorithm:
-    def __init__(self, dimension, gamma, decay = None):
+    def __init__(self, dimension, gamma, maxQueuesize, decay = None):
         self.articles = {}
         self.gamma = gamma
         self.decay = decay
         self.dimension = dimension
         self.PoolArticleNum = 0
+        self.recentArticles = Queue.Queue(maxsize = maxQueuesize)
     
     def decide(self, pool_articles, user, time_):  #(paramters: article pool)
         self.PoolArticleNum= len(pool_articles)
-        MyQ = OrderQueue()
-        QueueSize = 15
-        MyQ.decreaseAll()
-        
+        #QueueSize = 15
+      
         r = random.random()
         cum_pta = 0.0        
         total_Weights = 0.0
         for x in pool_articles:
-            if x.id not in self.articles:
+            if x.id not in self.recentArticles.queue:
                 self.articles[x.id] = Exp3Struct(self.gamma, x.id)
             
-            if MyQ.QueueLength < QueueSize:
-                MyQ.push(x)
-            elif x.id in MyQ.dic:
-                MyQ.dic[x.id] += 1
-            else:
-                a=MyQ.pop()
-                self.articles[a].reInitilize()
-                MyQ.push(x.id)
-                
+            if self.recentArticles.full():
+                self.recentArticles.get()
+                self.recentArticles.put(x.id)                
             total_Weights += self.articles[x.id].weights
         for x in pool_articles:
             self.articles[x.id].updatePta(self.PoolArticleNum, total_Weights)
@@ -320,13 +314,16 @@ class EpsilonGreedyAlgorithm:
         self.epsilon = epsilon
     def decide(self, pool_articles, user, time_):
         article_Picked = None
+        #if random.random() < self.epsilon:
+        #   article_Picked = choice(pool_articles)
+        #else:
+        for x in pool_articles:
+            if x.id not in self.articles:
+                self.articles[x.id] = GreedyStruct(x.id)
+            self.articles[x.id].updatePta()
         if random.random() < self.epsilon:
             article_Picked = choice(pool_articles)
         else:
-            for x in pool_articles:
-                if x.id not in self.articles:
-                    self.articles[x.id] = GreedyStruct(x.id)
-                self.articles[x.id].updatePta()
             article_Picked = max(np.random.permutation([(x, self.articles[x.id].pta) for x in pool_articles]), key = itemgetter(1))[0]
         return article_Picked
     def updateParameters(self, pickedArticle, userArrived, click, time_):
