@@ -14,6 +14,7 @@ class Article():
 		self.absDiff = {}
 		self.time_ = {}
 		self.testVars = {}
+		self.lnorm = 0
 
 	def setTheta(self, theta):
 		self.initialTheta = theta
@@ -59,6 +60,7 @@ class ArticleManager():
 		self.argv = argv
 		self.signature = "A-"+str(self.n_articles)+"+PA"+ str(self.poolArticles)+"+TF-"+self.thetaFunc.__name__
 		self.influx = influx
+		self.articles = []
 
 	def saveArticles(self, Articles, filename, force=False):
 		fileOverWriteWarning(filename, force)
@@ -69,7 +71,7 @@ class ArticleManager():
 		with open(filename, 'r') as f:
 			return cPickle.load(f)
 
-	def simulateArticlePool(self):
+	def simulateArticlePool(self, bad=False):
 		def getEndTimes():
 			pool = range(self.poolArticles)
 			endTimes = [0 for i in startTimes]
@@ -86,7 +88,7 @@ class ArticleManager():
 			return endTimes
 
 		
-		articles = []
+		# articles = []
 		articles_id = range(self.n_articles)
 		
 		if self.poolArticles and self.poolArticles < self.n_articles:
@@ -100,7 +102,21 @@ class ArticleManager():
 			startTimes = [0 for x in range(self.n_articles)]
 			endTimes = [self.iterations for x in range(self.n_articles)]
 
+
+		# min_lnorm = self.argv["l2_limit"] if "l2_limit" in self.argv else 1
+		# lastest_article = 0
+		"the code below assumes that article with same start dates are adjacent"
 		for key, st, ed in zip(articles_id, startTimes, endTimes):
-			articles.append(Article(key, st, ed, featureUniform(self.dimension, {})))
-			articles[-1].theta = self.thetaFunc(self.dimension, argv=self.argv)
-		return articles
+			self.articles.append(Article(key, st, ed, featureUniform(self.dimension, {})))
+				
+			self.articles[-1].theta = self.thetaFunc(self.dimension, argv=self.argv)
+			self.articles[-1].lnorm = np.linalg.norm(self.articles[-1].theta, ord=2)
+
+		# "if bad is selected and when the article has a different start time"
+		# 	if bad and lastest_article is not st:
+		# 		self.argv["l2_limit"] = min_lnorm
+			
+		# 	if min_lnorm > self.articles[-1].lnorm:
+		# 		min_lnorm = self.articles[-1].lnorm
+
+		return self.articles

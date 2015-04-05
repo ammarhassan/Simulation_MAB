@@ -36,6 +36,9 @@ class batchAlgorithmStats():
 		self.articlesPicked_temp = []
 		self.entropy = []
 		self.regret = []
+		self.countNewArticles = 0
+		self.countNewArticlesArray = []
+
 
 	def addRecord(self, iter_, poolMSE, poolArticles):
 		self.clickArray.append(self.stats.clicks)
@@ -50,10 +53,14 @@ class batchAlgorithmStats():
 				self.articlesCTR[x] = [poolArticles[x]]
 		self.entropy.append(calculateEntropy(self.articlesPicked_temp))
 		self.articlesPicked_temp = []
+		self.countNewArticlesArray.append(self.countNewArticles)
+		self.countNewArticles = 0	
 
-	def iterationRecord(self, click, articlePicked):
+	def iterationRecord(self, click, articlePicked, new=False):
 		self.stats.addrecord(click)
 		self.articlesPicked_temp.append(articlePicked)
+		self.countNewArticles += new
+
 
 	def plotArticle(self, article_id):
 		plot(self.time_, self.articlesCTR[article_id])
@@ -99,15 +106,33 @@ def gaussianFeature(dimension, argv ):
 
 	return vector
 
+
+def condition_bound(x, xlim, type_):
+	# print "x", x, xlim, type_
+	return (x <= xlim or type_!="upper") and (x >= xlim or type_!="lower")
+
 def featureUniform(dimension, argv=None):
+	print argv
+	l2_limit = argv["l2_limit"] if "l2_limit" in argv else 1
+	l2_type = argv["l2_type"] if "l2_type" in argv else "upper"
+	
+	max_limit = argv["max_limit"] if "max_limit" in argv else 1
+	max_type = argv["max_type"] if "max_type" in argv else "upper"
+
+	# condition_l2 = lambda l2_norm, l2_limit:  (l2_norm <= l2_limit or l2_type!="upper") and (l2_norm >= l2_limit or l2_type!="lower")
+	# condition_max = lambda max_, max_limit: (max_ <= max_limit or not max_type=="upper") and  (max_ >= max_limit or not max_type=="lower")
+	condition = lambda x, xlim, x_type, y, ylim, y_type: condition_bound(x, xlim, x_type) and condition_bound(y, ylim, y_type)
 
 	vector = np.array([random() for _ in range(dimension)])
+	l2 = np.linalg.norm(vector, ord=2)
+	m = max(vector)
+	
+	while not condition(l2, l2_limit, l2_type, m, max_limit, max_type):
+		vector = np.array([random() for _ in range(dimension)])
+		l2 = np.linalg.norm(vector, ord=2)
+		m = max(vector)
 
-	l2_norm = np.linalg.norm(vector, ord=2)
-	if argv and 'l2_limit' in argv and l2_norm > argv['l2_limit']:
-		while np.linalg.norm(vector, ord=2) > argv['l2_limit']:
-			vector = np.array([random() for _ in range(dimension)])
-
+	# print l2, m, condition_bound(l2, l2_limit, l2_type), condition_bound(m, max_limit, max_type)
 	return vector
 
 def getBatchStats(arr):
@@ -126,3 +151,24 @@ def fileOverWriteWarning(filename, force):
 			print "Warning: Overwriting %s"%(filename)
 		else:
 			raise FileExists(filename)
+
+if __name__ == '__main__':
+	vector = featureUniform(5, argv={"l2_limit":.1, "l2_type":"upper"})
+	assert np.linalg.norm(vector, 2) <= .5
+
+	vector = featureUniform(5, argv={"l2_limit":.9, "l2_type":"lower"})
+	assert np.linalg.norm(vector, 2) >= .5
+
+	vector = featureUniform(5, argv={"max_limit":.3, "max_type":"upper"})
+	assert max(vector) <= .5
+
+	vector = featureUniform(5, argv={"max_limit":.7, "max_type":"lower"})
+	assert max(vector) >= .5
+
+	vector = featureUniform(5, argv={"max_limit":.3, "max_type":"upper", "l2_limit":1, "l2_type":"upper"})
+	assert max(vector) <= .5
+
+	vector = featureUniform(5, argv={"max_limit":.7, "max_type":"lower", "l2_limit":.1, "l2_type":"upper"})
+	assert max(vector) >= .5
+
+

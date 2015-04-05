@@ -1,7 +1,7 @@
 import math
 import numpy as np
 from MAB_algorithms import *
-from exp3_MAB import Exp3Algorithm, UCB1Algorithm, Exp3QueueAlgorithm
+from exp3_MAB import Exp3Algorithm, UCB1Algorithm, Exp3QueueAlgorithm, Exp3Algorithm_Baised
 import datetime
 from matplotlib.pylab import *
 from random import sample
@@ -13,12 +13,14 @@ import json
 from conf import sim_files_folder, result_folder
 import os
 
+
 class simulateOnlineData():
 	def __init__(self, dimension, iterations, articles, userGenerator,
 		batchSize=1000,
 		noise=lambda : np.random.normal(scale=.001),
 		type_="ConstantTheta", environmentVars=None,
-		signature=""):
+		signature="",
+		thetaFunc = None):
 
 		self.simulation_signature = signature
 		self.dimension = dimension
@@ -39,6 +41,7 @@ class simulateOnlineData():
 		self.reward_vector = {}
 
 		self.userGenerator = userGenerator
+		self.thetaFunc = thetaFunc
 		self.initiateEnvironment()
 
 	def initiateEnvironment(self):
@@ -67,6 +70,13 @@ class simulateOnlineData():
 				x.testVars["shrinker"] = np.diag(np.ones(self.dimension) * random() *self.environmentVars["shrink"])
 			env_sign += "+rate-" + str(self.environmentVars["shrink"])
 
+		elif self.type=="shrinkOrd2_deterministic":
+			for x in self.articles:
+				# x.initialTheta = x.theta
+				# x.testVars["shrinker"] = random()
+				x.testVars["shrinker"] = np.diag(np.ones(self.dimension) *self.environmentVars["shrink"])
+			env_sign += "+rate-" + str(self.environmentVars["shrink"])
+
 		elif self.type=="abruptThetaChange":
 			env_sign += 'reInit-' + str(self.environmentVars["reInitiate"]//1000)+'k'
 		elif self.type=="popularityShift":
@@ -87,7 +97,6 @@ class simulateOnlineData():
 
 	def regulateEnvironment(self):
 		self.reward_vector = {}
-		self.articlePool = [x for x in self.articles if self.iter_ <= x.endTime and self.iter_ >= x.startTime]
 		if self.type=="abruptThetaChange":
 			if self.iter_%self.environmentVars["reInitiate"]==0 and self.iter_>1:
 				for x in self.articlePool:
@@ -104,7 +113,7 @@ class simulateOnlineData():
 			for x in self.articlePool:
 				x.theta = np.dot(x.testVars['shrinker'], x.theta)
 
-		elif self.type=="shrinkOrd2":
+		elif self.type=="shrinkOrd2" or self.type=="shrinkOrd2_deterministic":
 			for x in self.articlePool:
 				temp = np.identity(self.dimension) - (x.testVars['shrinker']*(self.iter_ - x.startTime)*1.0/self.iterations)
 				x.theta = np.dot(temp, x.theta)
@@ -115,6 +124,25 @@ class simulateOnlineData():
 
 	def getUser(self):
 		return self.userGenerator.next()
+
+	def updateArticlePool(self):
+		min_limit = 0
+		max_limit = 1
+		if "bad" in self.environmentVars and len(self.articlePool):
+			max_limit = min([min(x.theta) for x in self.articlePool])
+
+		elif "good" in self.environmentVars and len(self.articlePool):
+			min_limit = max([max(x.theta) for x in self.articlePool])
+
+		self.articlePool = [x for x in self.articles if self.iter_ <= x.endTime and self.iter_ >= x.startTime]
+		
+		if self.iter_ > 0:
+			for x in self.articlePool:
+				if x.startTime==self.iter_:
+					if "bad" in self.environmentVars:
+						x.theta = np.array([random()*max_limit for _ in range(self.dimension)])
+					elif "good" in self.environmentVars:
+						x.theta = np.array([min_limit+random()*(1-min_limit) for _ in range(self.dimension)])
 
 	def getClick(self, pickedArticle, userArrived):
 		if pickedArticle.id not in self.reward_vector:
@@ -141,24 +169,28 @@ class simulateOnlineData():
 		self.startTime = datetime.datetime.now()
 		for self.iter_ in xrange(self.iterations):
 			"regulateEnvironment is essential; if removed, copy its code here"
+			self.updateArticlePool()
 			self.regulateEnvironment()
 			userArrived = self.getUser()
 			for alg_name, alg in algorithms.items():
-				pickedArticle = alg.decide(self.articlePool, userArrived, self.iter_)
+				print_ = self.iter_>0  and not(self.iter_%50)
+				if print_: print '\n', alg_name
+				pickedArticle = alg.decide(self.articlePool, userArrived, self.iter_, print_=print_)
 				click = self.getReward(pickedArticle, userArrived)
 				if click < 0 :
 					print click
 				alg.updateParameters(pickedArticle, userArrived, click, self.iter_)
 
-				self.iterationRecord(alg_name, userArrived.id, click, pickedArticle.id)
+				self.iterationRecord(alg_name, userArrived.id, click, pickedArticle)
 			if self.iter_%self.batchSize==0 and self.iter_>1:
 				self.batchRecord(algorithms)
 
 
-	def iterationRecord(self, alg_name, user_id, click, article_id):
+	def iterationRecord(self, alg_name, user_id, click, article):
 		if alg_name not in self.alg_perf:
 			self.alg_perf[alg_name] = batchAlgorithmStats()
-		self.alg_perf[alg_name].iterationRecord(click, article_id)
+		new = article.startTime == max([x.startTime for x in self.articlePool])
+		self.alg_perf[alg_name].iterationRecord(click, article.id, new)
 
 	def batchRecord(self, algorithms):
 		for alg_name, alg in algorithms.items():
@@ -197,7 +229,12 @@ class simulateOnlineData():
 			batchCTR = getBatchStats(self.alg_perf[alg_name].clickArray)/getBatchStats(self.alg_perf[alg_name].accessArray)
 			axarr[1].plot(self.alg_perf[alg_name].time_, batchCTR)
 
-			axarr[2].plot(self.alg_perf[alg_name].time_, self.alg_perf[alg_name].entropy)
+			axarr[2].set_ylim([0, max(self.alg_perf[alg_name].countNewArticlesArray)])
+			# print max(self.alg_perf[alg_name].countNewArticlesArray)
+			axarr[2].plot(self.alg_perf[alg_name].time_, self.alg_perf[alg_name].countNewArticlesArray)
+
+
+			# axarr[2].plot(self.alg_perf[alg_name].time_, self.alg_perf[alg_name].entropy)
 
 		# axarr[0].set_xlabel("Iteration")
 		axarr[0].legend(self.alg_perf.keys(), loc=1, prop={'size':6}, fancybox=True, framealpha=0.3)
@@ -207,7 +244,8 @@ class simulateOnlineData():
 		axarr[1].set_ylabel("Batch Reward")
 		axarr[1].legend(self.alg_perf.keys(), loc=1, prop={'size':6}, fancybox=True, framealpha=0.3)
 
-		axarr[2].set_ylabel("Entropy of picked \n actions")
+		# axarr[2].set_ylabel("Entropy of picked \n actions")
+		axarr[2].set_ylabel("# of new articles \n selected")
 
 		plotLines(axarr[0], xlocs)
 		plotLines(axarr[1], xlocs)
@@ -261,17 +299,17 @@ if __name__ == '__main__':
 	# def constructSignature():
 	# 	signature = AM.signature + 
 
-	iterations = 20000
-	dimension = 5
-	alpha = .3
+	iterations = 1000
+	dimension = 2
+	alpha = 1.5
 
-	n_articles = 2000
-	shrinks = [.1]
-	poolArticles = [1500]
-	articleInflux = 100
+	n_articles = 75
+	shrinks = [.005]
+	poolArticles = [50]
+	articleInflux = 25
 	n_users = 100
 	decay = .99
-	batchSize = 100
+	batchSize = 10
 
 	userFilename = os.path.join(sim_files_folder, "users+it-"+str(iterations)+"+dim-"+str(dimension)+".p")
 	resultsFile = os.path.join(result_folder, "Results.csv")
@@ -279,8 +317,8 @@ if __name__ == '__main__':
 
 	"Run if there is no such file with these settings; if file already exist then comment out the below funciton"
 	UM = UserManager(dimension, iterations, userFilename)
-	UM.randomContexts(featureUniform, argv={"l2_limit":1})
-	
+	# UM.randomContexts(featureUniform, argv={"l2_limit":1})
+
 
 	for p_art in poolArticles:
 
@@ -304,22 +342,24 @@ if __name__ == '__main__':
 								noise = lambda : 0,
 								batchSize = batchSize,
 								# type_ = "abruptThetaChange",environmentVars={"reInitiate":100000},
-								# type_ = "ConstantTheta",environmentVars={},
+								type_ = "ConstantTheta",environmentVars={"bad":True},
 								# type_ = "evolveTheta", environmentVars={"stepSize":.0000001},
 								# type_ = "shrinkTheta", environmentVars={"shrink":shrink},
-								type_ = "shrinkOrd2", environmentVars={"shrink":shrink},
+								# type_ = "shrinkOrd2_deterministic", environmentVars={"shrink":shrink, "good":True},
 								# type_ = "popularityShift", environmentVars={"sigmaL":1, "sigmaU":2},
 								signature = AM.signature,
+								thetaFunc = featureUniform,
 							)
 			print "Starting for ", simExperiment.simulation_signature
 			algorithms = {}
-			for decay in [.999]:
+			for decay in [.9, .99]:
 				algorithms["decLinUCB=" + str(decay)] = LinUCBAlgorithm(dimension=dimension, alpha=alpha, decay=decay)
 			algorithms["LinUCB"] = LinUCBAlgorithm(dimension=dimension, alpha=alpha)
-			algorithms["UCB1"] = UCB1Algorithm(dimension=dimension)
-			algorithms["EXP3"] = Exp3Algorithm(dimension=dimension,gamma=.5)
+			# algorithms["UCB1"] = UCB1Algorithm(dimension=dimension)
+			# algorithms["EXP3"] = Exp3Algorithm(dimension=dimension,gamma=.5)
 			# algorithms["decEXP3=.9"] = Exp3Algorithm(dimension=dimension, gamma=.5, decay = .9)
 			# algorithms["EXP3Queue"] = Exp3QueueAlgorithm(dimension=dimension, gamma=.5)
+			# algorithms["EXP3_Baised"] = Exp3Algorithm_Baised(dimension=dimension, gamma=.5)
 
 			simExperiment.runAlgorithms(algorithms)
 			simExperiment.analyzeExperiment(result_folder, alpha, decay)

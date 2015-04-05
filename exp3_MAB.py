@@ -72,7 +72,8 @@ class Exp3Struct:
         self.pta +=(self.gamma)*(1.0/float(n_arms))
     def applyDecay(self, decay, duration):
         self.weights *= (decay**duration)
-        
+
+
 class UCB1Struct:
     def __init__(self, id):
         self.id = id
@@ -130,7 +131,7 @@ class RandomAlgorithm:
     def getarticleCTR(self, article_id):
         return self.articles[article_id].stats.CTR
         
-class Exp3Algorithm:
+class Exp3Algorithm(object):
     def __init__(self, dimension, gamma, decay = None):
         self.articles = {}
         self.gamma = gamma
@@ -169,6 +170,22 @@ class Exp3Algorithm:
 
     def getLearntParams(self, article_id):
         return np.zeros(self.dimension)
+
+class Exp3Algorithm_Baised(Exp3Algorithm):
+    def __init__(self, dimension, gamma, decay = None):
+        super(Exp3Algorithm_Baised, self).__init__(dimension, gamma, decay)
+
+    def decide(self, pool_articles, user, time_): #(paramters: article pool)    
+        if len(self.articles.keys()):
+            mean_weights = np.mean([self.articles[x.id].weights for x in pool_articles if x.id in self.articles])
+        else: mean_weights = 1
+
+        for x in pool_articles:
+            if x.id not in self.articles:
+                self.articles[x.id] = Exp3Struct(self.gamma, x.id)
+                self.articles[x.id].weights = mean_weights
+        return super(Exp3Algorithm_Baised, self).decide(pool_articles, user, time_)
+
 
 class Exp3QueueAlgorithm:
     def __init__(self, dimension, gamma, decay = None):
