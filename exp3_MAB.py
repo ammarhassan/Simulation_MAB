@@ -139,7 +139,7 @@ class Exp3Algorithm(object):
         self.dimension = dimension
         self.PoolArticleNum = 0
     
-    def decide(self, pool_articles, user, time_): #(paramters: article pool)
+    def decide(self, pool_articles, user, time_, print_=False): #(paramters: article pool)
         "Should self.PoolArticleNum be total articles or total pool_articles?? Please correct the following line if its wrong."
         self.PoolArticleNum = len(pool_articles)
         r = random.random()
@@ -171,11 +171,14 @@ class Exp3Algorithm(object):
     def getLearntParams(self, article_id):
         return np.zeros(self.dimension)
 
+    def getPredictedReward(self, article_id):
+        return 0
+
 class Exp3Algorithm_Baised(Exp3Algorithm):
     def __init__(self, dimension, gamma, decay = None):
         super(Exp3Algorithm_Baised, self).__init__(dimension, gamma, decay)
 
-    def decide(self, pool_articles, user, time_): #(paramters: article pool)    
+    def decide(self, pool_articles, user, time_, print_=False): #(paramters: article pool)    
         if len(self.articles.keys()):
             mean_weights = np.mean([self.articles[x.id].weights for x in pool_articles if x.id in self.articles])
         else: mean_weights = 1
@@ -184,8 +187,7 @@ class Exp3Algorithm_Baised(Exp3Algorithm):
             if x.id not in self.articles:
                 self.articles[x.id] = Exp3Struct(self.gamma, x.id)
                 self.articles[x.id].weights = mean_weights
-        return super(Exp3Algorithm_Baised, self).decide(pool_articles, user, time_)
-
+        return super(Exp3Algorithm_Baised, self).decide(pool_articles, user, time_, print_=False)
 
 class Exp3QueueAlgorithm:
     def __init__(self, dimension, gamma, decay = None):
@@ -195,7 +197,7 @@ class Exp3QueueAlgorithm:
         self.dimension = dimension
         self.PoolArticleNum = 0
     
-    def decide(self, pool_articles, user, time_):  #(paramters: article pool)
+    def decide(self, pool_articles, user, time_, print_=False):  #(paramters: article pool)
         self.PoolArticleNum = len(pool_articles)
         MyQ = PopularityQueue()
         QueueSize = 15
@@ -240,6 +242,9 @@ class Exp3QueueAlgorithm:
     def getLearntParams(self, article_id):
         return np.zeros(self.dimension)
 
+    def getPredictedReward(self, article_id):
+        return 0
+
 
 class Exp3OrderQueueAlgorithm:
     def __init__(self, dimension, gamma, maxQueuesize, decay = None):
@@ -250,7 +255,7 @@ class Exp3OrderQueueAlgorithm:
         self.PoolArticleNum = 0
         self.recentArticles = Queue.Queue(maxsize = maxQueuesize)
     
-    def decide(self, pool_articles, user, time_):  #(paramters: article pool)
+    def decide(self, pool_articles, user, time_, print_=False):  #(paramters: article pool)
         self.PoolArticleNum= len(pool_articles)
         #QueueSize = 15
       
@@ -287,13 +292,16 @@ class Exp3OrderQueueAlgorithm:
     def getLearntParams(self, article_id):
         return np.zeros(self.dimension)
 
+    def getPredictedReward(self, article_id):
+        return 0
+
 
 class UCB1Algorithm:
     def __init__(self, dimension, decay = None):
         self.articles = {}
         self.decay = decay
         self.dimension = dimension
-    def decide(self, pool_articles, user, time_): #parameters:(article pool, number of times that has been played)
+    def decide(self, pool_articles, user, time_, print_=False): #parameters:(article pool, number of times that has been played)
         articlePicked = None
         for x in pool_articles:
             if x.id not in self.articles:
@@ -323,13 +331,16 @@ class UCB1Algorithm:
     def getLearntParams(self, article_id):
         return np.zeros(self.dimension)
 
+    def getPredictedReward(self, article_id):
+        return 0
+
 class EpsilonGreedyAlgorithm:
     def __init__(self, dimension, epsilon, decay = None):
         self.articles = {}
         self.decay = decay
         self.dimension = dimension
         self.epsilon = epsilon
-    def decide(self, pool_articles, user, time_):
+    def decide(self, pool_articles, user, time_, print_=False):
         article_Picked = None
         #if random.random() < self.epsilon:
         #   article_Picked = choice(pool_articles)
@@ -351,6 +362,9 @@ class EpsilonGreedyAlgorithm:
     
     def getLearntParams(self, article_id):
         return np.zeros(self.dimension)
+
+    def getPredictedReward(self, article_id):
+        return 0
 
     
         

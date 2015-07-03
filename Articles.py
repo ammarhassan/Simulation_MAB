@@ -11,10 +11,15 @@ class Article():
 		self.initialTheta = None
 		self.theta = None
 		self.featureVector = FV
-		self.absDiff = {}
 		self.time_ = {}
 		self.testVars = {}
 		self.lnorm = 0
+		self.gamma = np.random.beta(100, 1)
+		self.thetasDiff={}
+		self.gammasDiff={}
+		self.rewardTrue={}
+		self.estimateReward={}
+		self.var = {}
 
 	def setTheta(self, theta):
 		self.initialTheta = theta
@@ -29,16 +34,21 @@ class Article():
 	def inPool(self, curr_time):
 		return curr_time <= self.endTime and curr_time >= self.startTime
 
-	def addRecord(self, time_, absDiff, alg_name):
-		if alg_name in self.time_:
-			self.time_[alg_name].append(time_)
-		else:
-			self.time_[alg_name] = [time_]
+	def addRecord(self, time_, alg_name, thetaDiff=0, gammaDiff=0, rewardTrue=0, estimateReward=0, var=0):
+		self.addToDictLists(alg_name, time_, self.time_)
+		self.addToDictLists(alg_name, thetaDiff, self.thetasDiff)
+		self.addToDictLists(alg_name, gammaDiff, self.gammasDiff)
 
-		if alg_name in self.absDiff:
-			self.absDiff[alg_name].append(absDiff)
+		self.addToDictLists(alg_name, rewardTrue, self.rewardTrue)
+		self.addToDictLists(alg_name, estimateReward, self.estimateReward)
+		self.addToDictLists(alg_name, var+estimateReward, self.var)
+
+
+	def addToDictLists(self, key, item, dic):
+		if key in dic:
+			dic[key].append(item)
 		else:
-			self.absDiff[alg_name] = [absDiff]
+			dic[key] = [item]
 
 	def plotAbsDiff(self):
 		figure()
@@ -71,7 +81,7 @@ class ArticleManager():
 		with open(filename, 'r') as f:
 			return cPickle.load(f)
 
-	def simulateArticlePool(self, bad=False):
+	def simulateArticlePool(self, bad=False, given_thetas=None):
 		def getEndTimes():
 			pool = range(self.poolArticles)
 			endTimes = [0 for i in startTimes]
@@ -108,9 +118,13 @@ class ArticleManager():
 		"the code below assumes that article with same start dates are adjacent"
 		for key, st, ed in zip(articles_id, startTimes, endTimes):
 			self.articles.append(Article(key, st, ed, featureUniform(self.dimension, {})))
-				
+			
 			self.articles[-1].theta = self.thetaFunc(self.dimension, argv=self.argv)
 			self.articles[-1].lnorm = np.linalg.norm(self.articles[-1].theta, ord=2)
+
+		if given_thetas:
+			for x, theta in zip(self.articles, given_thetas):
+				x.theta = theta
 
 		# "if bad is selected and when the article has a different start time"
 		# 	if bad and lastest_article is not st:

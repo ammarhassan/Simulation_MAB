@@ -1,6 +1,7 @@
 import numpy as np
 from util_functions import calculateEntropy, featureUniform, gaussianFeature, Stats, fileOverWriteWarning
 import json
+from random import choice
 
 
 class User():
@@ -16,13 +17,15 @@ class UserManager():
 		self.filename = filename
 		self.signature = ""
 
-	def simulateContextfromUsers(self, numUsers, featureFunction, argv):
+	def simulateContextfromUsers(self, numUsers, featureFunction, argv, force=False):
+		fileOverWriteWarning(self.filename, force)
 		"""users of all context arriving uniformly"""
 		usersids = range(numUsers)
 		users = []
 		for key in usersids:
 			users.append(User(key, featureFunction(self.dimension, argv=argv)))
 		
+		self.signature = "U+FF-"+featureFunction.__name__
 		with open(self.filename, 'w') as f:
 			for it in range(self.iterations):
 				chosen = choice(users)

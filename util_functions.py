@@ -38,9 +38,22 @@ class batchAlgorithmStats():
 		self.regret = []
 		self.countNewArticles = 0
 		self.countNewArticlesArray = []
+		self.regret = []
+		self.iterationRegret = 0
+		self.bestRewardError = []
+		self.iterationbestRewardError=0
+		self.chosenRewardError = []
+		self.iterationChosenRewardError=0
+		self.chosenReward = []
+		self.iterationChosenReward = 0
+		self.chosenActionPredReward = []
+		self.iterationChosenPredReward = 0
+		self.bestReward = []
+		self.iterationbestReward = 0
+		self.bestActionPredReward = []
+		self.iterationbestPredReward = 0
 
-
-	def addRecord(self, iter_, poolMSE, poolArticles):
+	def addRecord(self,iter_,poolMSE,poolArticles):
 		self.clickArray.append(self.stats.clicks)
 		self.accessArray.append(self.stats.accesses)
 		self.CTRArray.append(self.stats.CTR)
@@ -56,10 +69,41 @@ class batchAlgorithmStats():
 		self.countNewArticlesArray.append(self.countNewArticles)
 		self.countNewArticles = 0	
 
-	def iterationRecord(self, click, articlePicked, new=False):
+		self.regret.append(self.iterationRegret)
+		self.iterationRegret = 0
+
+		self.bestRewardError.append(self.iterationbestRewardError)
+		self.iterationbestRewardError = 0
+
+		self.chosenRewardError.append(self.iterationChosenRewardError)
+		self.iterationChosenRewardError = 0
+
+		self.chosenReward.append(self.iterationChosenReward)
+		self.iterationChosenReward = 0
+
+		self.chosenActionPredReward.append(self.iterationChosenPredReward)
+		self.iterationChosenPredReward = 0
+
+		self.bestReward.append(self.iterationbestReward)
+		self.iterationbestReward = 0
+
+		self.bestActionPredReward.append(self.iterationbestPredReward)
+		self.iterationbestPredReward = 0
+
+	def iterationRecord(self, click, articlePicked, new=False, regret=0,bestReward=0,bestActionPredReward=0,chosenReward=0,chosenActionPredReward=0):
 		self.stats.addrecord(click)
 		self.articlesPicked_temp.append(articlePicked)
 		self.countNewArticles += new
+		self.iterationRegret += regret
+		self.iterationbestRewardError += bestReward-bestActionPredReward
+		self.iterationbestReward += bestReward
+		self.iterationbestPredReward += bestActionPredReward
+
+		self.iterationChosenRewardError += chosenReward- chosenActionPredReward
+		self.iterationChosenReward += chosenReward
+		self.iterationChosenPredReward += chosenActionPredReward
+
+
 
 
 	def plotArticle(self, article_id):
@@ -108,19 +152,15 @@ def gaussianFeature(dimension, argv ):
 
 
 def condition_bound(x, xlim, type_):
-	# print "x", x, xlim, type_
 	return (x <= xlim or type_!="upper") and (x >= xlim or type_!="lower")
 
 def featureUniform(dimension, argv=None):
-	print argv
 	l2_limit = argv["l2_limit"] if "l2_limit" in argv else 1
 	l2_type = argv["l2_type"] if "l2_type" in argv else "upper"
 	
 	max_limit = argv["max_limit"] if "max_limit" in argv else 1
 	max_type = argv["max_type"] if "max_type" in argv else "upper"
 
-	# condition_l2 = lambda l2_norm, l2_limit:  (l2_norm <= l2_limit or l2_type!="upper") and (l2_norm >= l2_limit or l2_type!="lower")
-	# condition_max = lambda max_, max_limit: (max_ <= max_limit or not max_type=="upper") and  (max_ >= max_limit or not max_type=="lower")
 	condition = lambda x, xlim, x_type, y, ylim, y_type: condition_bound(x, xlim, x_type) and condition_bound(y, ylim, y_type)
 
 	vector = np.array([random() for _ in range(dimension)])
@@ -151,6 +191,9 @@ def fileOverWriteWarning(filename, force):
 			print "Warning: Overwriting %s"%(filename)
 		else:
 			raise FileExists(filename)
+
+def everyX(li, X, offSet=0):
+	return [li[i*X+offSet] for i in range((len(li)-offSet)/X)]
 
 if __name__ == '__main__':
 	vector = featureUniform(5, argv={"l2_limit":.1, "l2_type":"upper"})
