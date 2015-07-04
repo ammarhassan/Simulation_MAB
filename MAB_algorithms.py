@@ -96,7 +96,7 @@ class DoublingRestartLinUCBAlgorithm(LinUCBAlgorithm):
 		self.articles[pickedArticle.id].learn_stats.addrecord(click)
 		self.articles[pickedArticle.id].learn_stats.updateCTR()
 
-		if time_ > 10 and newInterval(time_):
+		if time_ > 1000 and newInterval(time_):
 			print time_, "reInitilize"
 			for x in self.articles:
 				self.articles[x].reInitilize()
@@ -162,6 +162,7 @@ class LinUCBStruct:
 		self.A_inv = np.identity(n=d)
 		self.theta = np.zeros(d)
 		self.pta = 0
+		self.DD = np.identity(n=d)
 
 	def updateParameters(self, featureVector, click, time_=None):
 		self.DD +=np.outer(featureVector, featureVector)
